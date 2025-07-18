@@ -36,6 +36,25 @@ function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number,
   return R * c;
 }
 
+// Function to send arrival data to backend
+const sendArrivalData = async (routeId: string, stopName: string, actualTime: string) => {
+  try {
+    await fetch('https://git-backend-1-production.up.railway.app/api/arrivals', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        routeId,
+        stopName,
+        actualTime,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch (error) {
+    console.error('Error sending arrival data:', error);
+  }
+};
 
 export default function VV1Route() {
   const webViewRef = useRef(null);
@@ -109,6 +128,9 @@ const time = `${hours12}:${minutes} ${ampm}`;
   const time = `${hr12}:${min} ${ampm}`;
 
   setStopArrivalTimes((prev) => ({ ...prev, [stop.name]: time }));
+            
+            // Send arrival data to backend for faculty dashboard
+            sendArrivalData('vv1', stop.name, time);
           }
         });
       } catch (err) {

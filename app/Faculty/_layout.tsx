@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Bus, Map, User, Settings } from 'lucide-react-native';
+import { Bus, Map, User, Settings, Clock } from 'lucide-react-native';
 
 function TabLayout() {
   return (
@@ -32,6 +32,13 @@ function TabLayout() {
         options={{
           title: 'Routes',
           tabBarIcon: ({ color, size }) => <Map size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="arrival-dashboard"
+        options={{
+          title: 'Arrivals',
+          tabBarIcon: ({ color, size }) => <Clock size={size} color={color} />,
         }}
       />
       <Tabs.Screen

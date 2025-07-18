@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MapPin, Clock, Bell, Search, Star, Info } from 'lucide-react-native';
+import { MapPin, Clock, Bell, Search, Star, Info, BarChart3 } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
 
@@ -19,6 +19,11 @@ const features = [
     icon: Bell,
     title: 'Alerts & Notifications',
     description: 'Get notified about delays, issues, or route changes instantly.',
+  },
+  {
+    icon: BarChart3,
+    title: 'Arrival Analytics',
+    description: 'Monitor real-time arrival data and performance statistics.',
   },
 ];
 
@@ -89,6 +94,10 @@ function FacultyHomeScreen() {
 
       <TouchableOpacity style={styles.exploreButton} onPress={() => router.push('/bus-routes')}>
         <Text style={styles.exploreButtonText}>View All Operations</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.dashboardButton} onPress={() => router.push('/Faculty/arrival-dashboard')}>
+        <Text style={styles.exploreButtonText}>View Arrival Dashboard</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -161,6 +170,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  dashboardButton: {
+    backgroundColor: '#059669',
+    marginHorizontal: 20,
+    marginBottom: 32,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
   },
   features: {
     marginTop: 32,
