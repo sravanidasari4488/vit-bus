@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MapPin, Clock, Bell, Search, Star, Info, BarChart3 } from 'lucide-react-native';
+import { MapPin, Clock, Bell, Search, Star, Info, ChartBar as BarChart3 } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
 
