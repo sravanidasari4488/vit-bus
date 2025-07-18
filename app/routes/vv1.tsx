@@ -17,7 +17,7 @@ const routeData = {
   ],
   occupancy: "Medium",
   stopsCoordinates: [
-    { name: "Kankipadu", lat: 16.515797, lng: 80.610565 },
+    { name: "Kankipadu", lat: 16.52746, lng: 80.628769 },
     { name: "Gosala", lat: 16.5292, lng: 80.6310 },
     { name: "Edupugallu", lat: 16.5282, lng: 80.6292 },
     { name: "Penumaluru", lat: 16.5120, lng: 80.6204 },
@@ -25,175 +25,162 @@ const routeData = {
   ]
 };
 
+// Utility function to calculate distance in meters
+function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const toRad = (deg: number) => deg * (Math.PI / 180);
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+
 export default function VV1Route() {
   const webViewRef = useRef(null);
   const [mapExpanded, setMapExpanded] = useState(false);
-  const [currentStop, setCurrentStop] = useState(null);
-  const [scheduleStatus, setScheduleStatus] = useState([]);
+  const [currentStop, setCurrentStop] = useState<string | null>(null);
+  const [scheduleStatus, setScheduleStatus] = useState<any[]>([]);
+  const [stopArrivalTimes, setStopArrivalTimes] = useState<{ [key: string]: string }>({});
 
-  // Fetch current stop status from API
+  // Determine current stop
   useEffect(() => {
-    // Simulate API call to get current stop
     const fetchCurrentStop = () => {
-      // In a real app, you would fetch this from your backend API
-      // For demo purposes, we'll simulate it
       const now = new Date();
       const hours = now.getHours();
-      const minutes = now.getMinutes();
-      
-      // Find the next upcoming stop
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+const hours12 = hours % 12 || 12;
+const ampm = hours >= 12 ? 'PM' : 'AM';
+const time = `${hours12}:${minutes} ${ampm}`;
+
       let foundStop = null;
       for (let i = 0; i < routeData.schedule.length; i++) {
         const stopTime = routeData.schedule[i].time;
         const [time, period] = stopTime.split(' ');
         const [stopHours, stopMinutes] = time.split(':').map(Number);
-        
         const stopHours24 = period === 'PM' && stopHours !== 12 ? stopHours + 12 : stopHours;
-        
+
         if (hours < stopHours24 || (hours === stopHours24 && minutes < stopMinutes)) {
           foundStop = routeData.schedule[i].stopName;
           break;
         }
       }
-      
+
       setCurrentStop(foundStop || "Completed");
-      
-      // Update schedule status
+
       const updatedSchedule = routeData.schedule.map(item => {
         const isReached = currentStop && routeData.stops.indexOf(item.stopName) < routeData.stops.indexOf(currentStop);
         const isCurrent = item.stopName === currentStop;
-        
+
         return {
           ...item,
           status: isCurrent ? "Arriving" : isReached ? "Reached" : "Pending"
         };
       });
-      
+
       setScheduleStatus(updatedSchedule);
     };
 
     fetchCurrentStop();
-    const interval = setInterval(fetchCurrentStop, 60000); // Update every minute
-    
+    const interval = setInterval(fetchCurrentStop, 60000);
     return () => clearInterval(interval);
   }, [currentStop]);
 
-  // Improved Mapbox HTML
-  const mapHtml = `
+  // Track bus location and record arrival times
+  useEffect(() => {
+    const fetchLiveLocation = async () => {
+      try {
+        const res = await fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/VV-12");
+        const data = await res.json();
+        if (!data?.lat || !data?.lon) return;
+
+        const busLat = parseFloat(data.lat);
+        const busLon = parseFloat(data.lon);
+
+        routeData.stopsCoordinates.forEach((stop) => {
+          const distance = getDistanceFromLatLonInMeters(busLat, busLon, stop.lat, stop.lng);
+          if (distance < 50 && !stopArrivalTimes[stop.name]) {
+            const now = new Date();
+  const hr = now.getHours();
+  const min = now.getMinutes().toString().padStart(2, '0');
+  const ampm = hr >= 12 ? "PM" : "AM";
+  const hr12 = hr % 12 || 12;
+  const time = `${hr12}:${min} ${ampm}`;
+
+  setStopArrivalTimes((prev) => ({ ...prev, [stop.name]: time }));
+          }
+        });
+      } catch (err) {
+        console.error("Error fetching location:", err);
+      }
+    };
+
+    fetchLiveLocation();
+    const interval = setInterval(fetchLiveLocation, 10000);
+    return () => clearInterval(interval);
+  }, [stopArrivalTimes]);
+
+  const mapHtml = `<!DOCTYPE html>
   <html lang="en">
-
-<head>
+  <head>
     <meta charset="UTF-8" />
-    <title>Route VV-11 Tracker</title>
+    <title>VV1 Map</title>
     <style>
-        body {
-            font-family: Arial;
-            text-align: center;
-            background: #f0f0f0;
-            margin: 0;
-            padding: 0;
-        }
-
-        h2 {
-            margin-top: 20px;
-        }
-
-        #map {
-            height: 100vh;
-            width: 100%;
-        }
-
-        #status {
-            font-size: 16px;
-            margin-top: 10px;
-        }
+      html, body, #map {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
     </style>
-</head>
-
-<body>
-   
+  </head>
+  <body>
     <div id="map"></div>
-
     <script>
-        let map, marker;
-        const vv11Stops = [
-            { stopName: "Ayodhya Nagar", time: "7:32 AM", lat: 16.5292, lon: 80.6310 },
-          
-            { stopName: "VIT -AP Campus", time: "8:45 AM", lat: 16.4941, lon: 80.4982 }
-        ];
+      const stops = ${JSON.stringify(routeData.stopsCoordinates)};
+      let map, marker;
 
-        async function initMap() {
-            map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 13,
-                center: { lat: 16.5111, lng: 80.5184 },
-            });
+      function initMap() {
+        map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 13,
+          center: stops[0]
+        });
 
-            const directionsService = new google.maps.DirectionsService();
-            const directionsRenderer = new google.maps.DirectionsRenderer({ map });
+        stops.forEach(stop => {
+          new google.maps.Marker({
+            map,
+            position: { lat: stop.lat, lng: stop.lng },
+            title: stop.name
+          });
+        });
 
-           const waypoints = vv11Stops.slice(1, -1).map(stop => ({
-    location: new google.maps.LatLng(stop.lat, stop.lon),
-    stopover: true
-}));
+        marker = new google.maps.Marker({
+          map,
+          icon: "http://maps.google.com/mapfiles/ms/icons/bus.png",
+          title: "Live VV1 Bus"
+        });
 
+        updateLocation();
+        setInterval(updateLocation, 5000);
+      }
 
-            directionsService.route({
-                origin: new google.maps.LatLng(vv11Stops[0].lat, vv11Stops[0].lon),
-                destination: new google.maps.LatLng(vv11Stops[vv11Stops.length - 1].lat, vv11Stops[vv11Stops.length - 1].lon),
-                waypoints,
-                travelMode: google.maps.TravelMode.DRIVING,
-            }, (result, status) => {
-                if (status === "OK") {
-                    directionsRenderer.setDirections(result);
-                } else {
-                    document.getElementById("status").innerText = "❌ Failed to draw VV-11 route.";
-                }
-            });
-
-            vv11Stops.forEach(stop => {
-                new google.maps.Marker({
-                    map,
-                    position: { lat: stop.lat, lng: stop.lon },
-                    label: stop.time,
-                    title: stop.stopName
-                    
-                });
-            });
-
-            updateLiveLocation();
-            setInterval(updateLiveLocation, 5000);
+      async function updateLocation() {
+        try {
+          const res = await fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/VV-12");
+          const data = await res.json();
+          if (data?.lat && data?.lon) {
+            const pos = { lat: parseFloat(data.lat), lng: parseFloat(data.lon) };
+            marker.setPosition(pos);
+            map.setCenter(pos);
+          }
+        } catch (e) {
+          console.error("Live location error", e);
         }
-
-        async function updateLiveLocation() {
-            try {
-                const res = await fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/VV-11");
-                const data = await res.json();
-                if (data && data.lat && data.lon) {
-                    const position = { lat: parseFloat(data.lat), lng: parseFloat(data.lon) };
-                    if (!marker) {
-                        marker = new google.maps.Marker({
-                            map,
-                            position,
-                            icon: "http://maps.google.com/mapfiles/ms/icons/bus.png",
-                            title: "Live VV-11 Bus"
-                        });
-                    } else {
-                        marker.setPosition(position);
-                    }
-                    map.setCenter(position);
-                }
-            } catch (err) {
-                document.getElementById("status").innerText = "❌ Error fetching VV-11 live location.";
-            }
-        }
+      }
     </script>
-
-    <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB48fIbQ7fTdXAp-pPf_mjXXAf2BEQMDI0&callback=initMap"></script>
-</body>
-
-</html>
-  `;
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB48fIbQ7fTdXAp-pPf_mjXXAf2BEQMDI0&callback=initMap&callback=initMap"></script>
+  </body>
+  </html>`;
 
   const handleMapResize = () => {
     webViewRef.current?.injectJavaScript('google.maps.event.trigger(map, "resize");');
@@ -206,18 +193,12 @@ export default function VV1Route() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>{routeData.title}</Text>
         <Text style={styles.description}>{routeData.description}</Text>
       </View>
 
-      {/* Map */}
-      <TouchableOpacity 
-        style={styles.mapContainer} 
-        activeOpacity={0.9}
-        onPress={toggleMapExpansion}
-      >
+      <TouchableOpacity style={styles.mapContainer} activeOpacity={0.9} onPress={toggleMapExpansion}>
         <WebView
           ref={webViewRef}
           source={{ html: mapHtml }}
@@ -225,37 +206,21 @@ export default function VV1Route() {
           originWhitelist={['*']}
           javaScriptEnabled
           domStorageEnabled
-          onMessage={(event) => {
-            const data = JSON.parse(event.nativeEvent.data);
-            if (data.type === "positionUpdate") {
-              // Handle position updates if needed
-            }
-          }}
         />
         <View style={styles.mapOverlay}>
           <Text style={styles.mapOverlayText}>Tap to expand</Text>
         </View>
       </TouchableOpacity>
 
-      {/* Expanded Map Modal */}
       <Modal visible={mapExpanded} transparent={false} animationType="fade">
         <View style={styles.expandedMapContainer}>
-          <WebView
-            ref={webViewRef}
-            source={{ html: mapHtml }}
-            style={styles.expandedMap}
-            onLoad={handleMapResize}
-          />
-          <TouchableOpacity 
-            style={styles.closeButton} 
-            onPress={toggleMapExpansion}
-          >
+          <WebView ref={webViewRef} source={{ html: mapHtml }} style={styles.expandedMap} onLoad={handleMapResize} />
+          <TouchableOpacity style={styles.closeButton} onPress={toggleMapExpansion}>
             <X size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </Modal>
 
-      {/* Bus Stops */}
       <View style={styles.infoCard}>
         <View style={styles.cardHeader}>
           <MapPin size={20} color="#3366FF" />
@@ -281,25 +246,29 @@ export default function VV1Route() {
           <Clock size={20} color="#3366FF" />
           <Text style={styles.cardTitle}>Schedule</Text>
         </View>
+
+        {/* Header row */}
+        <View style={styles.scheduleItem}>
+          <Text style={[styles.scheduleTime, { fontWeight: "bold" }]}>Scheduled</Text>
+          <Text style={[styles.scheduleStop, { fontWeight: "bold" }]}>Stop</Text>
+          <Text style={[styles.scheduleActualTime, { fontWeight: "bold" }]}>Arrived At</Text>
+        </View>
+
+        {/* Rows */}
         <View style={styles.scheduleContainer}>
           {(scheduleStatus.length > 0 ? scheduleStatus : routeData.schedule).map((item, i) => (
-                      <View key={i} style={styles.scheduleItem}>
+            <View key={i} style={styles.scheduleItem}>
               <Text style={styles.scheduleTime}>{item.time}</Text>
               <Text style={styles.scheduleStop}>{item.stopName}</Text>
-              <Text style={[
-                styles.scheduleStatus,
-                item.status === 'Arriving' ? styles.arriving :
-                item.status === 'Reached' ? styles.reached :
-                styles.pending
-              ]}>
-                {item.status}
+              <Text style={styles.scheduleActualTime}>
+                {stopArrivalTimes[item.stopName] || "-"}
               </Text>
             </View>
           ))}
         </View>
       </View>
 
-      {/* Occupancy */}
+
       <View style={styles.infoCard}>
         <View style={styles.cardHeader}>
           <Users size={20} color="#3366FF" />
@@ -312,34 +281,13 @@ export default function VV1Route() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff"
-  },
-  contentContainer: {
-    padding: 16,
-  },
-  header: {
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  description: {
-    fontSize: 16,
-    color: "#666",
-  },
-  mapContainer: {
-    height: 200,
-    marginBottom: 16,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  map: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: "#fff" },
+  contentContainer: { padding: 16 },
+  header: { marginBottom: 16 },
+  title: { fontSize: 24, fontWeight: "bold", color: "#333" },
+  description: { fontSize: 16, color: "#666" },
+  mapContainer: { height: 200, marginBottom: 16, borderRadius: 8, overflow: 'hidden' },
+  map: { flex: 1 },
   mapOverlay: {
     position: "absolute",
     bottom: 8,
@@ -348,17 +296,9 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 4,
   },
-  mapOverlayText: {
-    color: "#fff",
-    fontSize: 12,
-  },
-  expandedMapContainer: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  expandedMap: {
-    flex: 1,
-  },
+  mapOverlayText: { color: "#fff", fontSize: 12 },
+  expandedMapContainer: { flex: 1, backgroundColor: "#000" },
+  expandedMap: { flex: 1 },
   closeButton: {
     position: "absolute",
     top: 40,
@@ -378,42 +318,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  cardTitle: {
-    fontSize: 18,
-    marginLeft: 8,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  stopsContainer: {
-    marginLeft: 12,
-  },
-  stopItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  stopDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  reachedDot: {
-    backgroundColor: "#4CAF50",
-  },
-  currentDot: {
-    backgroundColor: "#FF9800",
-  },
-  pendingDot: {
-    backgroundColor: "#BDBDBD",
-  },
-  stopText: {
-    fontSize: 16,
-    color: "#333",
-  },
-  scheduleContainer: {
-    marginLeft: 12,
-  },
+  cardTitle: { fontSize: 18, marginLeft: 8, fontWeight: "bold", color: "#333" },
+  stopsContainer: { marginLeft: 12 },
+  stopItem: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  stopDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
+  reachedDot: { backgroundColor: "#4CAF50" },
+  currentDot: { backgroundColor: "#FF9800" },
+  pendingDot: { backgroundColor: "#BDBDBD" },
+  stopText: { fontSize: 16, color: "#333" },
+  scheduleContainer: { marginLeft: 12 },
   scheduleItem: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -429,24 +342,20 @@ const styles = StyleSheet.create({
     color: "#333",
     width: "45%",
   },
-  scheduleStatus: {
+  scheduleActualTime: {
     fontSize: 14,
-    fontWeight: "bold",
+    color: "#333",
     width: "30%",
     textAlign: "right",
   },
-  arriving: {
-    color: "#FF9800",
-  },
-  reached: {
-    color: "#4CAF50",
-  },
-  pending: {
-    color: "#BDBDBD",
-  },
-  occupancyText: {
-    fontSize: 16,
-    marginLeft: 32,
-    color: "#333",
-  }
+  // scheduleStatus: {
+  //   fontSize: 14,
+  //   fontWeight: "bold",
+  //   width: "30%",
+  //   textAlign: "right",
+  // },
+  // arriving: { color: "#FF9800" },
+  // reached: { color: "#4CAF50" },
+  // pending: { color: "#BDBDBD" },
+  occupancyText: { fontSize: 16, marginLeft: 32, color: "#333" },
 });
