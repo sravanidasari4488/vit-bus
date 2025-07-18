@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from "react-native";
 import { MapPin, Clock, Users, X } from "lucide-react-native";
 import { WebView } from "react-native-webview";
@@ -19,20 +20,89 @@ const routeData = {
       
     ],
     occupancy: "Medium",
-    coordinates: {
-      center: [78.4867, 17.3850],
-      stops: [
-        [78.4867, 17.3850],
-        [78.4900, 17.3880],
-        [78.4930, 17.3900],
-        [78.4960, 17.3920]
-      ]
-    }
+    stopsCoordinates: [
+      { name: "Lodge center", lat: 16.2970, lng: 80.4365 },
+      { name: "Arundalpeta", lat: 16.2985, lng: 80.4380 },
+      { name: "Sankar vilas", lat: 16.3000, lng: 80.4395 },
+      { name: "Naaz center", lat: 16.3015, lng: 80.4410 },
+      { name: "Market - Guntur", lat: 16.3030, lng: 80.4425 },
+      { name: "Chandana bros", lat: 16.3045, lng: 80.4440 },
+      { name: "Bus stand - Guntur", lat: 16.3060, lng: 80.4455 }
+    ]
+};
+
+// Utility function to calculate distance in meters
+function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const toRad = (deg: number) => deg * (Math.PI / 180);
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Function to send arrival data to backend
+const sendArrivalData = async (routeId: string, stopName: string, actualTime: string) => {
+  try {
+    await fetch('https://git-backend-1-production.up.railway.app/api/arrivals', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        routeId,
+        stopName,
+        actualTime,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch (error) {
+    console.error('Error sending arrival data:', error);
+  }
 };
 
 export default function VV1Route() {
   const webViewRef = useRef(null);
   const [mapExpanded, setMapExpanded] = useState(false);
+  const [stopArrivalTimes, setStopArrivalTimes] = useState<{ [key: string]: string }>({});
+
+  // Track bus location and record arrival times
+  useEffect(() => {
+    const fetchLiveLocation = async () => {
+      try {
+        const res = await fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/GV-15");
+        const data = await res.json();
+        if (!data?.lat || !data?.lon) return;
+
+        const busLat = parseFloat(data.lat);
+        const busLon = parseFloat(data.lon);
+
+        routeData.stopsCoordinates.forEach((stop) => {
+          const distance = getDistanceFromLatLonInMeters(busLat, busLon, stop.lat, stop.lng);
+          if (distance < 50 && !stopArrivalTimes[stop.name]) {
+            const now = new Date();
+            const hr = now.getHours();
+            const min = now.getMinutes().toString().padStart(2, '0');
+            const ampm = hr >= 12 ? "PM" : "AM";
+            const hr12 = hr % 12 || 12;
+            const time = `${hr12}:${min} ${ampm}`;
+
+            setStopArrivalTimes((prev) => ({ ...prev, [stop.name]: time }));
+            
+            // Send arrival data to backend for faculty dashboard
+            sendArrivalData('gv1', stop.name, time);
+          }
+        });
+      } catch (err) {
+        console.error("Error fetching location:", err);
+      }
+    };
+
+    fetchLiveLocation();
+    const interval = setInterval(fetchLiveLocation, 10000);
+    return () => clearInterval(interval);
+  }, [stopArrivalTimes]);
 
   // Mapbox HTML (same as original)
   const mapHtml = `
@@ -54,14 +124,14 @@ export default function VV1Route() {
       const map = new mapboxgl.Map({
         container: 'map',
         style: 'mapbox://styles/mapbox/streets-v11',
-        center: [${routeData.coordinates.center}],
+        center: [${routeData.stopsCoordinates[0].lng}, ${routeData.stopsCoordinates[0].lat}],
         zoom: 13
       });
 
       // Add markers for bus stops
-      ${routeData.coordinates.stops.map((coord, i) => `
+      ${routeData.stopsCoordinates.map((coord, i) => `
         new mapboxgl.Marker()
-          .setLngLat([${coord}])
+          .setLngLat([${coord.lng}, ${coord.lat}])
           .setPopup(new mapboxgl.Popup().setHTML('<h3>${routeData.stops[i]}</h3>'))
           .addTo(map);
       `).join('')}
@@ -69,7 +139,7 @@ export default function VV1Route() {
       // Current bus location marker (update every 5 seconds)
       let currentMarker = new mapboxgl.Marker({ color: '#3366FF' });
       function updateBusLocation() {
-        fetch("https://git-backend-1-production.up.railway.app/get_location")
+        fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/GV-15")
           .then(res => res.json())
           .then(loc => {
             if (loc.lat && loc.lon) {
@@ -165,11 +235,9 @@ export default function VV1Route() {
           {routeData.schedule.map((item, i) => (
             <View key={i} style={styles.scheduleItem}>
               <Text style={styles.scheduleTime}>{item.time}</Text>
-              <Text style={[
-                styles.scheduleStatus,
-                item.status.includes("Delayed") ? styles.delayed : styles.onTime
-              ]}>
-                {item.status}
+              <Text style={styles.scheduleStop}>{item.stopName || routeData.stops[i]}</Text>
+              <Text style={styles.scheduleActualTime}>
+                {stopArrivalTimes[item.stopName || routeData.stops[i]] || "-"}
               </Text>
             </View>
           ))}
@@ -310,16 +378,19 @@ const styles = StyleSheet.create({
   scheduleTime: {
     fontSize: 16,
     color: "#334155",
+    width: "30%",
   },
-  scheduleStatus: {
+  scheduleStop: {
     fontSize: 16,
-    fontWeight: "600",
+    color: "#334155",
+    width: "40%",
   },
-  onTime: {
-    color: "#10B981",
-  },
-  delayed: {
-    color: "#F59E0B",
+  scheduleActualTime: {
+    fontSize: 16,
+    color: "#334155",
+    width: "30%",
+    textAlign: "right",
+    fontWeight: "bold",
   },
   occupancyContainer: {
     flexDirection: "row",
