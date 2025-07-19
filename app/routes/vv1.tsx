@@ -173,123 +173,55 @@ export default function VV1Route() {
   }, [stopArrivalTimes]);
 
   const mapHtml = `<!DOCTYPE html>
-  <html lang="en">
+  <html>
   <head>
-    <meta charset="UTF-8" />
-    <title>VV1 Live Tracking</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css' rel='stylesheet' />
     <style>
-      html, body, #map {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      }
-      .custom-marker {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border: 3px solid white;
-        border-radius: 50%;
-        width: 20px;
-        height: 20px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-      }
+      body, html, #map { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
     </style>
   </head>
   <body>
     <div id="map"></div>
     <script>
-      const stops = ${JSON.stringify(routeData.stopsCoordinates)};
-      let map, marker;
+      mapboxgl.accessToken = 'pk.eyJ1IjoiZ25hbmFzYWkxMjMiLCJhIjoiY204Mzh4NmphMGdhNDJscXZmd2pnb3ZrOCJ9.Cp-WLG0aK9wVlbTEUBaItA';
+      const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [${routeData.stopsCoordinates[0].lng}, ${routeData.stopsCoordinates[0].lat}],
+        zoom: 13
+      });
 
-      function initMap() {
-        map = new google.maps.Map(document.getElementById("map"), {
-          zoom: 13,
-          center: stops[0],
-          styles: [
-            {
-              "featureType": "all",
-              "elementType": "geometry.fill",
-              "stylers": [{"weight": "2.00"}]
-            },
-            {
-              "featureType": "all",
-              "elementType": "geometry.stroke",
-              "stylers": [{"color": "#9c9c9c"}]
-            },
-            {
-              "featureType": "all",
-              "elementType": "labels.text",
-              "stylers": [{"visibility": "on"}]
-            }
-          ]
-        });
+      // Add markers for bus stops
+      ${routeData.stopsCoordinates.map((coord, i) => `
+        new mapboxgl.Marker()
+          .setLngLat([${coord.lng}, ${coord.lat}])
+          .setPopup(new mapboxgl.Popup().setHTML('<h3>${routeData.stops[i]}</h3>'))
+          .addTo(map);
+      `).join('')}
 
-        stops.forEach((stop, index) => {
-          new google.maps.Marker({
-            map,
-            position: { lat: stop.lat, lng: stop.lng },
-            title: stop.name,
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 8,
-              fillColor: '#667eea',
-              fillOpacity: 1,
-              strokeColor: '#ffffff',
-              strokeWeight: 2
-            },
-            label: {
-              text: (index + 1).toString(),
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: '12px'
+      // Current bus location marker (update every 5 seconds)
+      let currentMarker = new mapboxgl.Marker({ color: '#3366FF' });
+      function updateBusLocation() {
+        fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/VV-12")
+          .then(res => res.json())
+          .then(loc => {
+            if (loc.lat && loc.lon) {
+              currentMarker.setLngLat([loc.lon, loc.lat]).addTo(map);
+              map.setCenter([loc.lon, loc.lat]);
             }
           });
-        });
-
-        marker = new google.maps.Marker({
-          map,
-          icon: {
-            url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(\`
-              <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="busGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
-                  </linearGradient>
-                </defs>
-                <circle cx="20" cy="20" r="18" fill="url(#busGradient)" stroke="white" stroke-width="3"/>
-                <text x="20" y="26" text-anchor="middle" fill="white" font-family="Arial" font-size="16" font-weight="bold">🚌</text>
-              </svg>
-            \`),
-            scaledSize: new google.maps.Size(40, 40),
-            anchor: new google.maps.Point(20, 20)
-          },
-          title: "VV1 Bus - Live Location"
-        });
-
-        updateLocation();
-        setInterval(updateLocation, 5000);
       }
-
-      async function updateLocation() {
-        try {
-          const res = await fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/VV-12");
-          const data = await res.json();
-          if (data?.lat && data?.lon) {
-            const pos = { lat: parseFloat(data.lat), lng: parseFloat(data.lon) };
-            marker.setPosition(pos);
-            map.setCenter(pos);
-          }
-        } catch (e) {
-          console.error("Live location error", e);
-        }
-      }
+      updateBusLocation();
+      setInterval(updateBusLocation, 5000);
     </script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB48fIbQ7fTdXAp-pPf_mjXXAf2BEQMDI0&callback=initMap"></script>
   </body>
   </html>`;
 
   const handleMapResize = () => {
-    webViewRef.current?.injectJavaScript('google.maps.event.trigger(map, "resize");');
+    webViewRef.current?.injectJavaScript('map.resize();');
   };
 
   const toggleMapExpansion = () => {
