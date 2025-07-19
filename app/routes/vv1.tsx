@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Animated } from "react-native";
-import { MapPin, Clock, Users, X, Navigation, Zap, CheckCircle, AlertCircle } from "lucide-react-native";
+import { MapPin, Clock, Users, X, Navigation, Zap, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from "lucide-react-native";
 import { WebView } from "react-native-webview";
 import { LinearGradient } from 'expo-linear-gradient';
 
