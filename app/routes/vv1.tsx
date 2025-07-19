@@ -1,12 +1,13 @@
 import React, { useRef, useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from "react-native";
-import { MapPin, Clock, Users, X } from "lucide-react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Animated } from "react-native";
+import { MapPin, Clock, Users, X, Navigation, Zap, CheckCircle, AlertCircle } from "lucide-react-native";
 import { WebView } from "react-native-webview";
+import { LinearGradient } from 'expo-linear-gradient';
 
 // VV1-specific data
 const routeData = {
-  title: "VV1 Bus Route",
-  description: "Kankipadu to Poranki",
+  title: "VV1 Express",
+  description: "Kankipadu ↔ Poranki",
   stops: ["Kankipadu", "Gosala", "Edupugallu", "Penumaluru", "Poranki"],
   schedule: [
     { time: "07:25 AM", stopName: "Kankipadu" },
@@ -16,6 +17,7 @@ const routeData = {
     { time: "07:45 AM", stopName: "Poranki" },
   ],
   occupancy: "Medium",
+  busNumber: "VV-12",
   stopsCoordinates: [
     { name: "Kankipadu", lat: 16.52746, lng: 80.628769 },
     { name: "Gosala", lat: 16.5292, lng: 80.6310 },
@@ -62,6 +64,28 @@ export default function VV1Route() {
   const [currentStop, setCurrentStop] = useState<string | null>(null);
   const [scheduleStatus, setScheduleStatus] = useState<any[]>([]);
   const [stopArrivalTimes, setStopArrivalTimes] = useState<{ [key: string]: string }>({});
+  const [isLive, setIsLive] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Pulse animation for live indicator
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.3,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
 
   // Determine current stop
   useEffect(() => {
@@ -69,9 +93,9 @@ export default function VV1Route() {
       const now = new Date();
       const hours = now.getHours();
       const minutes = now.getMinutes().toString().padStart(2, '0');
-const hours12 = hours % 12 || 12;
-const ampm = hours >= 12 ? 'PM' : 'AM';
-const time = `${hours12}:${minutes} ${ampm}`;
+      const hours12 = hours % 12 || 12;
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const time = `${hours12}:${minutes} ${ampm}`;
 
       let foundStop = null;
       for (let i = 0; i < routeData.schedule.length; i++) {
@@ -112,8 +136,12 @@ const time = `${hours12}:${minutes} ${ampm}`;
       try {
         const res = await fetch("https://git-backend-1-production.up.railway.app/api/gps/latest_location/VV-12");
         const data = await res.json();
-        if (!data?.lat || !data?.lon) return;
+        if (!data?.lat || !data?.lon) {
+          setIsLive(false);
+          return;
+        }
 
+        setIsLive(true);
         const busLat = parseFloat(data.lat);
         const busLon = parseFloat(data.lon);
 
@@ -121,13 +149,13 @@ const time = `${hours12}:${minutes} ${ampm}`;
           const distance = getDistanceFromLatLonInMeters(busLat, busLon, stop.lat, stop.lng);
           if (distance < 50 && !stopArrivalTimes[stop.name]) {
             const now = new Date();
-  const hr = now.getHours();
-  const min = now.getMinutes().toString().padStart(2, '0');
-  const ampm = hr >= 12 ? "PM" : "AM";
-  const hr12 = hr % 12 || 12;
-  const time = `${hr12}:${min} ${ampm}`;
+            const hr = now.getHours();
+            const min = now.getMinutes().toString().padStart(2, '0');
+            const ampm = hr >= 12 ? "PM" : "AM";
+            const hr12 = hr % 12 || 12;
+            const time = `${hr12}:${min} ${ampm}`;
 
-  setStopArrivalTimes((prev) => ({ ...prev, [stop.name]: time }));
+            setStopArrivalTimes((prev) => ({ ...prev, [stop.name]: time }));
             
             // Send arrival data to backend for faculty dashboard
             sendArrivalData('vv1', stop.name, time);
@@ -135,6 +163,7 @@ const time = `${hours12}:${minutes} ${ampm}`;
         });
       } catch (err) {
         console.error("Error fetching location:", err);
+        setIsLive(false);
       }
     };
 
@@ -147,12 +176,21 @@ const time = `${hours12}:${minutes} ${ampm}`;
   <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>VV1 Map</title>
+    <title>VV1 Live Tracking</title>
     <style>
       html, body, #map {
         height: 100%;
         margin: 0;
         padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .custom-marker {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: 3px solid white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
       }
     </style>
   </head>
@@ -165,21 +203,67 @@ const time = `${hours12}:${minutes} ${ampm}`;
       function initMap() {
         map = new google.maps.Map(document.getElementById("map"), {
           zoom: 13,
-          center: stops[0]
+          center: stops[0],
+          styles: [
+            {
+              "featureType": "all",
+              "elementType": "geometry.fill",
+              "stylers": [{"weight": "2.00"}]
+            },
+            {
+              "featureType": "all",
+              "elementType": "geometry.stroke",
+              "stylers": [{"color": "#9c9c9c"}]
+            },
+            {
+              "featureType": "all",
+              "elementType": "labels.text",
+              "stylers": [{"visibility": "on"}]
+            }
+          ]
         });
 
-        stops.forEach(stop => {
+        stops.forEach((stop, index) => {
           new google.maps.Marker({
             map,
             position: { lat: stop.lat, lng: stop.lng },
-            title: stop.name
+            title: stop.name,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: '#667eea',
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 2
+            },
+            label: {
+              text: (index + 1).toString(),
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: '12px'
+            }
           });
         });
 
         marker = new google.maps.Marker({
           map,
-          icon: "http://maps.google.com/mapfiles/ms/icons/bus.png",
-          title: "Live VV1 Bus"
+          icon: {
+            url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(\`
+              <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="busGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                  </linearGradient>
+                </defs>
+                <circle cx="20" cy="20" r="18" fill="url(#busGradient)" stroke="white" stroke-width="3"/>
+                <text x="20" y="26" text-anchor="middle" fill="white" font-family="Arial" font-size="16" font-weight="bold">🚌</text>
+              </svg>
+            \`),
+            scaledSize: new google.maps.Size(40, 40),
+            anchor: new google.maps.Point(20, 20)
+          },
+          title: "VV1 Bus - Live Location"
         });
 
         updateLocation();
@@ -200,7 +284,7 @@ const time = `${hours12}:${minutes} ${ampm}`;
         }
       }
     </script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB48fIbQ7fTdXAp-pPf_mjXXAf2BEQMDI0&callback=initMap&callback=initMap"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB48fIbQ7fTdXAp-pPf_mjXXAf2BEQMDI0&callback=initMap"></script>
   </body>
   </html>`;
 
@@ -213,171 +297,516 @@ const time = `${hours12}:${minutes} ${ampm}`;
     setTimeout(handleMapResize, 300);
   };
 
+  const getStopStatus = (stopName: string, index: number) => {
+    if (stopArrivalTimes[stopName]) return 'completed';
+    if (currentStop === stopName) return 'current';
+    if (currentStop && routeData.stops.indexOf(stopName) < routeData.stops.indexOf(currentStop)) return 'completed';
+    return 'pending';
+  };
+
+  const getOccupancyColor = (occupancy: string) => {
+    switch (occupancy) {
+      case 'High': return '#EF4444';
+      case 'Medium': return '#F59E0B';
+      case 'Low': return '#10B981';
+      default: return '#6B7280';
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{routeData.title}</Text>
-        <Text style={styles.description}>{routeData.description}</Text>
+      {/* Hero Header */}
+      <LinearGradient
+        colors={['#667eea', '#764ba2']}
+        style={styles.heroHeader}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.titleSection}>
+            <Text style={styles.routeNumber}>{routeData.title}</Text>
+            <Text style={styles.routeDescription}>{routeData.description}</Text>
+          </View>
+          
+          <View style={styles.statusSection}>
+            <View style={styles.liveIndicator}>
+              <Animated.View style={[styles.liveDot, { transform: [{ scale: pulseAnim }] }]} />
+              <Text style={styles.liveText}>{isLive ? 'LIVE' : 'OFFLINE'}</Text>
+            </View>
+            <Text style={styles.busNumber}>Bus {routeData.busNumber}</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* Quick Stats */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <Navigation size={24} color="#667eea" />
+          <Text style={styles.statNumber}>{routeData.stops.length}</Text>
+          <Text style={styles.statLabel}>Total Stops</Text>
+        </View>
+        
+        <View style={styles.statCard}>
+          <CheckCircle size={24} color="#10B981" />
+          <Text style={styles.statNumber}>{Object.keys(stopArrivalTimes).length}</Text>
+          <Text style={styles.statLabel}>Completed</Text>
+        </View>
+        
+        <View style={styles.statCard}>
+          <Users size={24} color={getOccupancyColor(routeData.occupancy)} />
+          <Text style={[styles.statNumber, { color: getOccupancyColor(routeData.occupancy) }]}>
+            {routeData.occupancy}
+          </Text>
+          <Text style={styles.statLabel}>Occupancy</Text>
+        </View>
       </View>
 
-      <TouchableOpacity style={styles.mapContainer} activeOpacity={0.9} onPress={toggleMapExpansion}>
-        <WebView
-          ref={webViewRef}
-          source={{ html: mapHtml }}
-          style={styles.map}
-          originWhitelist={['*']}
-          javaScriptEnabled
-          domStorageEnabled
-        />
-        <View style={styles.mapOverlay}>
-          <Text style={styles.mapOverlayText}>Tap to expand</Text>
+      {/* Interactive Map */}
+      <View style={styles.mapSection}>
+        <View style={styles.sectionHeader}>
+          <MapPin size={20} color="#667eea" />
+          <Text style={styles.sectionTitle}>Live Tracking</Text>
+          <View style={styles.mapControls}>
+            <TouchableOpacity style={styles.expandButton} onPress={toggleMapExpansion}>
+              <Text style={styles.expandButtonText}>Expand</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.mapContainer} activeOpacity={0.9} onPress={toggleMapExpansion}>
+          <WebView
+            ref={webViewRef}
+            source={{ html: mapHtml }}
+            style={styles.map}
+            originWhitelist={['*']}
+            javaScriptEnabled
+            domStorageEnabled
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.1)']}
+            style={styles.mapGradientOverlay}
+          />
+        </TouchableOpacity>
+      </View>
 
-      <Modal visible={mapExpanded} transparent={false} animationType="fade">
+      {/* Expanded Map Modal */}
+      <Modal visible={mapExpanded} transparent={false} animationType="slide">
         <View style={styles.expandedMapContainer}>
-          <WebView ref={webViewRef} source={{ html: mapHtml }} style={styles.expandedMap} onLoad={handleMapResize} />
-          <TouchableOpacity style={styles.closeButton} onPress={toggleMapExpansion}>
-            <X size={24} color="#FFFFFF" />
-          </TouchableOpacity>
+          <LinearGradient
+            colors={['#667eea', '#764ba2']}
+            style={styles.modalHeader}
+          >
+            <Text style={styles.modalTitle}>Live Bus Tracking</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={toggleMapExpansion}>
+              <X size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </LinearGradient>
+          <WebView
+            ref={webViewRef}
+            source={{ html: mapHtml }}
+            style={styles.expandedMap}
+            onLoad={handleMapResize}
+          />
         </View>
       </Modal>
 
-      <View style={styles.infoCard}>
-        <View style={styles.cardHeader}>
-          <MapPin size={20} color="#3366FF" />
-          <Text style={styles.cardTitle}>Bus Stops</Text>
+      {/* Route Progress */}
+      <View style={styles.progressSection}>
+        <View style={styles.sectionHeader}>
+          <Zap size={20} color="#667eea" />
+          <Text style={styles.sectionTitle}>Route Progress</Text>
         </View>
-        <View style={styles.stopsContainer}>
-          {routeData.stops.map((stop, i) => (
-            <View key={i} style={styles.stopItem}>
-              <View style={[
-                styles.stopDot,
-                currentStop && routeData.stops.indexOf(stop) < routeData.stops.indexOf(currentStop) ? styles.reachedDot :
-                stop === currentStop ? styles.currentDot : styles.pendingDot
-              ]} />
-              <Text style={styles.stopText}>{stop}</Text>
-            </View>
-          ))}
+        
+        <View style={styles.progressContainer}>
+          {routeData.stops.map((stop, index) => {
+            const status = getStopStatus(stop, index);
+            const isLast = index === routeData.stops.length - 1;
+            
+            return (
+              <View key={index} style={styles.progressItem}>
+                <View style={styles.progressLeft}>
+                  <View style={[
+                    styles.progressDot,
+                    status === 'completed' && styles.completedDot,
+                    status === 'current' && styles.currentDot,
+                    status === 'pending' && styles.pendingDot
+                  ]}>
+                    {status === 'completed' && <CheckCircle size={16} color="#FFFFFF" />}
+                    {status === 'current' && <AlertCircle size={16} color="#FFFFFF" />}
+                    {status === 'pending' && <Text style={styles.dotNumber}>{index + 1}</Text>}
+                  </View>
+                  {!isLast && <View style={[
+                    styles.progressLine,
+                    status === 'completed' && styles.completedLine
+                  ]} />}
+                </View>
+                
+                <View style={styles.progressContent}>
+                  <Text style={[
+                    styles.stopName,
+                    status === 'current' && styles.currentStopName
+                  ]}>
+                    {stop}
+                  </Text>
+                  <Text style={styles.stopTime}>
+                    Scheduled: {routeData.schedule[index]?.time}
+                  </Text>
+                  {stopArrivalTimes[stop] && (
+                    <Text style={styles.actualTime}>
+                      Arrived: {stopArrivalTimes[stop]}
+                    </Text>
+                  )}
+                  {status === 'current' && (
+                    <View style={styles.currentBadge}>
+                      <Text style={styles.currentBadgeText}>Approaching</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
         </View>
       </View>
 
-      {/* Schedule */}
-      <View style={styles.infoCard}>
-        <View style={styles.cardHeader}>
-          <Clock size={20} color="#3366FF" />
-          <Text style={styles.cardTitle}>Schedule</Text>
+      {/* Schedule Table */}
+      <View style={styles.scheduleSection}>
+        <View style={styles.sectionHeader}>
+          <Clock size={20} color="#667eea" />
+          <Text style={styles.sectionTitle}>Detailed Schedule</Text>
         </View>
-
-        {/* Header row */}
-        <View style={styles.scheduleItem}>
-          <Text style={[styles.scheduleTime, { fontWeight: "bold" }]}>Scheduled</Text>
-          <Text style={[styles.scheduleStop, { fontWeight: "bold" }]}>Stop</Text>
-          <Text style={[styles.scheduleActualTime, { fontWeight: "bold" }]}>Arrived At</Text>
-        </View>
-
-        {/* Rows */}
-        <View style={styles.scheduleContainer}>
-          {(scheduleStatus.length > 0 ? scheduleStatus : routeData.schedule).map((item, i) => (
-            <View key={i} style={styles.scheduleItem}>
-              <Text style={styles.scheduleTime}>{item.time}</Text>
-              <Text style={styles.scheduleStop}>{item.stopName}</Text>
-              <Text style={styles.scheduleActualTime}>
-                {stopArrivalTimes[item.stopName] || "-"}
+        
+        <View style={styles.scheduleTable}>
+          <View style={styles.tableHeader}>
+            <Text style={styles.tableHeaderText}>Stop</Text>
+            <Text style={styles.tableHeaderText}>Scheduled</Text>
+            <Text style={styles.tableHeaderText}>Actual</Text>
+          </View>
+          
+          {routeData.schedule.map((item, index) => (
+            <View key={index} style={[
+              styles.tableRow,
+              stopArrivalTimes[item.stopName] && styles.completedRow
+            ]}>
+              <Text style={styles.tableCellStop}>{item.stopName}</Text>
+              <Text style={styles.tableCell}>{item.time}</Text>
+              <Text style={[
+                styles.tableCell,
+                stopArrivalTimes[item.stopName] && styles.actualTimeCell
+              ]}>
+                {stopArrivalTimes[item.stopName] || '-'}
               </Text>
             </View>
           ))}
         </View>
-      </View>
-
-
-      <View style={styles.infoCard}>
-        <View style={styles.cardHeader}>
-          <Users size={20} color="#3366FF" />
-          <Text style={styles.cardTitle}>Occupancy</Text>
-        </View>
-        <Text style={styles.occupancyText}>{routeData.occupancy}</Text>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  contentContainer: { padding: 16 },
-  header: { marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: "bold", color: "#333" },
-  description: { fontSize: 16, color: "#666" },
-  mapContainer: { height: 200, marginBottom: 16, borderRadius: 8, overflow: 'hidden' },
-  map: { flex: 1 },
-  mapOverlay: {
-    position: "absolute",
-    bottom: 8,
-    right: 8,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    padding: 6,
-    borderRadius: 4,
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
   },
-  mapOverlayText: { color: "#fff", fontSize: 12 },
-  expandedMapContainer: { flex: 1, backgroundColor: "#000" },
-  expandedMap: { flex: 1 },
+  contentContainer: {
+    paddingBottom: 40,
+  },
+  heroHeader: {
+    paddingTop: 60,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  titleSection: {
+    flex: 1,
+  },
+  routeNumber: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  routeDescription: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  statusSection: {
+    alignItems: 'flex-end',
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+    marginRight: 6,
+  },
+  liveText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  busNumber: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginTop: -20,
+    marginBottom: 20,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 4,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  mapSection: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginLeft: 8,
+    flex: 1,
+  },
+  mapControls: {
+    flexDirection: 'row',
+  },
+  expandButton: {
+    backgroundColor: '#667eea',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  expandButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  mapContainer: {
+    height: 250,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  map: {
+    flex: 1,
+  },
+  mapGradientOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+  },
+  expandedMapContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
   closeButton: {
-    position: "absolute",
-    top: 40,
-    right: 20,
-    backgroundColor: "#00000088",
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     padding: 8,
     borderRadius: 20,
   },
-  infoCard: {
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
+  expandedMap: {
+    flex: 1,
   },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
+  progressSection: {
+    marginHorizontal: 20,
+    marginBottom: 24,
   },
-  cardTitle: { fontSize: 18, marginLeft: 8, fontWeight: "bold", color: "#333" },
-  stopsContainer: { marginLeft: 12 },
-  stopItem: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  stopDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
-  reachedDot: { backgroundColor: "#4CAF50" },
-  currentDot: { backgroundColor: "#FF9800" },
-  pendingDot: { backgroundColor: "#BDBDBD" },
-  stopText: { fontSize: 16, color: "#333" },
-  scheduleContainer: { marginLeft: 12 },
-  scheduleItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
+  progressContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  scheduleTime: {
+  progressItem: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  progressLeft: {
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  progressDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#E5E7EB',
+  },
+  completedDot: {
+    backgroundColor: '#10B981',
+  },
+  currentDot: {
+    backgroundColor: '#F59E0B',
+  },
+  pendingDot: {
+    backgroundColor: '#E5E7EB',
+  },
+  dotNumber: {
     fontSize: 14,
-    color: "#333",
-    width: "25%",
+    fontWeight: 'bold',
+    color: '#6B7280',
   },
-  scheduleStop: {
+  progressLine: {
+    width: 2,
+    height: 40,
+    backgroundColor: '#E5E7EB',
+    marginTop: 8,
+  },
+  completedLine: {
+    backgroundColor: '#10B981',
+  },
+  progressContent: {
+    flex: 1,
+    paddingTop: 4,
+  },
+  stopName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  currentStopName: {
+    color: '#F59E0B',
+  },
+  stopTime: {
     fontSize: 14,
-    color: "#333",
-    width: "45%",
+    color: '#6B7280',
+    marginBottom: 2,
   },
-  scheduleActualTime: {
+  actualTime: {
     fontSize: 14,
-    color: "#333",
-    width: "30%",
-    textAlign: "right",
+    color: '#10B981',
+    fontWeight: '600',
   },
-  // scheduleStatus: {
-  //   fontSize: 14,
-  //   fontWeight: "bold",
-  //   width: "30%",
-  //   textAlign: "right",
-  // },
-  // arriving: { color: "#FF9800" },
-  // reached: { color: "#4CAF50" },
-  // pending: { color: "#BDBDBD" },
-  occupancyText: { fontSize: 16, marginLeft: 32, color: "#333" },
+  currentBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  currentBadgeText: {
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '600',
+  },
+  scheduleSection: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+  },
+  scheduleTable: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  tableHeaderText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  completedRow: {
+    backgroundColor: '#F0FDF4',
+  },
+  tableCellStop: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  tableCell: {
+    flex: 1,
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  actualTimeCell: {
+    color: '#10B981',
+    fontWeight: '600',
+  },
 });
