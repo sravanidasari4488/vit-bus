@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthProvider';
 
 function Login() {
-  const [isLogin, setIsLogin] = useState(true);
+  const [isSignIn, setIsSignIn] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,7 +24,7 @@ function Login() {
   const [passwordError, setPasswordError] = useState('');
 
   const router = useRouter();
-  const { login, register, isLoading, error, clearError } = useAuth();
+  const { signIn, signUp, isLoading, error, clearError } = useAuth();
 
   const validateEmail = (email: string) => {
     const validDomains = ['@vitapstudent.ac.in', '@vitap.ac.in'];
@@ -53,7 +53,7 @@ function Login() {
       isValid = false;
     }
 
-    if (!isLogin && password !== confirmPassword) {
+    if (!isSignIn && password !== confirmPassword) {
       setPasswordError('Passwords do not match');
       isValid = false;
     }
@@ -61,12 +61,12 @@ function Login() {
     return isValid;
   };
 
-  const handleAuth = async () => {
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
     try {
-      if (isLogin) {
-        await login(email, password);
+      if (isSignIn) {
+        await signIn(email, password);
         // Redirect based on email domain
         if (email.endsWith('@vitap.ac.in')) {
           router.replace('/Faculty');
@@ -76,15 +76,15 @@ function Login() {
           router.replace('/');
         }
       } else {
-        await register(email, password);
+        await signUp(email, password);
         Alert.alert(
-          'Registration Successful',
-          'Please check your email to verify your account before logging in.',
+          'Sign Up Successful',
+          'Please check your email and click the verification link to complete your registration.',
           [
             {
               text: 'OK',
               onPress: () => {
-                setIsLogin(true);
+                setIsSignIn(true);
                 setPassword('');
                 setConfirmPassword('');
               },
@@ -98,7 +98,7 @@ function Login() {
   };
 
   const toggleAuthMode = () => {
-    setIsLogin(!isLogin);
+    setIsSignIn(!isSignIn);
     clearError();
     setEmailError('');
     setPasswordError('');
@@ -126,7 +126,7 @@ function Login() {
         </View>
 
         <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>{isLogin ? 'Login' : 'Create Account'}</Text>
+          <Text style={styles.formTitle}>{isSignIn ? 'Sign In' : 'Sign Up'}</Text>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email</Text>
@@ -159,7 +159,7 @@ function Login() {
             {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
           </View>
 
-          {!isLogin && (
+          {!isSignIn && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Confirm Password</Text>
               <TextInput
@@ -176,19 +176,19 @@ function Login() {
 
           <TouchableOpacity
             style={styles.authButton}
-            onPress={handleAuth}
+            onPress={handleSubmit}
             disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <Text style={styles.authButtonText}>
-                {isLogin ? 'Login' : 'Register'}
+                {isSignIn ? 'Sign In' : 'Sign Up'}
               </Text>
             )}
           </TouchableOpacity>
 
-          {isLogin && (
+          {isSignIn && (
             <TouchableOpacity style={styles.forgotPassword}>
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
@@ -196,9 +196,9 @@ function Login() {
 
           <TouchableOpacity style={styles.toggleMode} onPress={toggleAuthMode}>
             <Text style={styles.toggleModeText}>
-              {isLogin
-                ? "Don't have an account? Register"
-                : "Already have an account? Login"}
+              {isSignIn
+                ? "Don't have an account? Sign Up"
+                : "Already have an account? Sign In"}
             </Text>
           </TouchableOpacity>
         </View>

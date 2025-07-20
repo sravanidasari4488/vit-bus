@@ -18,8 +18,8 @@ interface AuthError {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (data: { displayName?: string; photoURL?: string }) => Promise<void>;
   uploadProfileImage: (uri: string) => Promise<string>;
@@ -86,7 +86,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return validDomains.some(domain => email.endsWith(domain));
   };
 
-  const login = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true);
       clearError();
@@ -110,7 +110,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const register = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string) => {
     try {
       setIsLoading(true);
       clearError();
@@ -125,14 +125,16 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const firstName = email.split('@')[0].split('.')[0];
       const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
 
-      await signUp?.create({
+      const result = await signUp?.create({
         emailAddress: email,
         password,
         firstName: displayName,
       });
 
-      // Prepare email verification
-      await signUp?.prepareEmailAddressVerification({ strategy: 'email_code' });
+      if (result) {
+        // Send verification email
+        await result.prepareEmailAddressVerification({ strategy: 'email_link' });
+      }
     } catch (error: any) {
       setError(parseAuthError(error));
       throw error;
@@ -231,8 +233,8 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const value = {
     user,
     isLoading,
-    login,
-    register,
+    signIn,
+    signUp,
     logout,
     updateUserProfile,
     uploadProfileImage,
