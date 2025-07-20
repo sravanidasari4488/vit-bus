@@ -11,6 +11,7 @@
     "ts:check": "tsc"
   },
   "dependencies": {
+    "@clerk/clerk-expo": "^2.14.9",
     "@expo/vector-icons": "^14.1.0",
     "@lucide/lab": "^0.1.2",
     "@react-native-async-storage/async-storage": "2.1.2",

@@ -1,7 +1,4 @@
-import * as WebBrowser from 'expo-web-browser';
-WebBrowser.maybeCompleteAuthSession();
 import React, { useState } from 'react';
-import { useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,18 +10,10 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from './context/AuthProvider';
-import { auth } from '../config/firebase';
-import * as Google from 'expo-auth-session/providers/google';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { colors } from '../constants/colors'; // ✅ Adjust the path if needed
-
-// import { useTheme } from '../(auth)/context/ThemeContext'; // update path as needed
-
-// const { isDark } = useTheme();
-// const theme = colors[isDark ? 'dark' : 'light'];
 
 function Login() {
   const [isLogin, setIsLogin] = useState(true);
@@ -33,26 +22,9 @@ function Login() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  
-
-
 
   const router = useRouter();
   const { login, register, isLoading, error, clearError } = useAuth();
-  const { setUserInfo } = useAuth();
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-  // expoClientId: '<YOUR_EXPO_CLIENT_ID>',
-  iosClientId: 'http://1036966591471-gg5qhjuc132bpqflieubu5ms52trgtft.apps.googleusercontent.com',
-  androidClientId: 'http://1036966591471-2a1ai61lra8mpihktm5irqb6ak668sa3.apps.googleusercontent.com',
-  webClientId: 'http://1036966591471-eosv71b6i622hto2emvudsbfuvfld1c5.apps.googleusercontent.com',
-});
-
-const [profilePic, setProfilePic] = useState('');
-
-
-
-
 
   const validateEmail = (email: string) => {
     const validDomains = ['@vitapstudent.ac.in', '@vitap.ac.in'];
@@ -95,23 +67,31 @@ const [profilePic, setProfilePic] = useState('');
     try {
       if (isLogin) {
         await login(email, password);
-         // Redirect based on email domain
-      if (email.endsWith('@vitap.ac.in')) {
-        router.replace('/Faculty');
-      } else if (email.endsWith('@vitapstudent.ac.in')) {
-        router.replace('/(tabs)');
-      } else {
-        router.replace('/'); // fallback
-      }
-         
+        // Redirect based on email domain
+        if (email.endsWith('@vitap.ac.in')) {
+          router.replace('/Faculty');
+        } else if (email.endsWith('@vitapstudent.ac.in')) {
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/');
+        }
       } else {
         await register(email, password);
-        router.replace('/routes/selectRoute');
+        Alert.alert(
+          'Registration Successful',
+          'Please check your email to verify your account before logging in.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setIsLogin(true);
+                setPassword('');
+                setConfirmPassword('');
+              },
+            },
+          ]
+        );
       }
-
-      // Redirect based on email domain
-     
-
     } catch (err: any) {
       console.log('Auth error:', err);
     }
@@ -122,27 +102,9 @@ const [profilePic, setProfilePic] = useState('');
     clearError();
     setEmailError('');
     setPasswordError('');
+    setPassword('');
+    setConfirmPassword('');
   };
-  
-  useEffect(() => {
-  if (response?.type === 'success') {
-    const { id_token } = response.params;
-    const credential = GoogleAuthProvider.credential(id_token);
-    signInWithCredential(auth, credential).then((userCredential) => {
-      const user = userCredential.user;
-      
-
-
-     setUserInfo({
-    photoURL: user.photoURL || '',
-    displayName: user.displayName || '',
-  });
-  router.replace('/routes/selectRoute');
-    });
-  }
-}, [response]);
-
-
 
   return (
     <KeyboardAvoidingView
@@ -155,13 +117,10 @@ const [profilePic, setProfilePic] = useState('');
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.logoContainer}>
-        
           <Image
             source={{ uri: 'https://images.pexels.com/photos/7470/bus-people-public-transport.jpg' }}
             style={styles.logo}
           />
-           
-          
           <Text style={styles.title}>VIT-AP Bus Tracker</Text>
           <Text style={styles.subtitle}>Track your bus in real-time</Text>
         </View>
