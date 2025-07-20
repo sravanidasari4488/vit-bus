@@ -8,3 +8,6 @@ if (!publishableKey) {
     'Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env file'
   );
 }
+
+
+export { publishableKey }
