@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { Clock, MapPin, Bus, RefreshCw, Calendar } from 'lucide-react-native';
+import { Clock, MapPin, Bus, RefreshCw, Calendar, Route } from 'lucide-react-native';
 
 interface ArrivalData {
   routeId: string;
@@ -28,6 +28,19 @@ interface RouteData {
   schedule: { time: string; stopName: string }[];
   stopsCoordinates: { name: string; lat: number; lng: number }[];
   busId: string; // GPS tracker ID
+}
+
+interface LocationData {
+  lat: number;
+  lon: number;
+  timestamp: string;
+}
+
+interface DistanceData {
+  routeId: string;
+  busId: string;
+  dailyDistance: number;
+  lastUpdated: string;
 }
 
 // All routes data with GPS coordinates and bus IDs
@@ -160,6 +173,8 @@ function ArrivalDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<string>('all');
+  const [distanceData, setDistanceData] = useState<{ [routeId: string]: DistanceData }>({});
+  const [previousLocations, setPreviousLocations] = useState<{ [busId: string]: LocationData }>({});
 
   // Track all buses and their arrival times
   useEffect(() => {
@@ -173,6 +188,42 @@ function ArrivalDashboard() {
 
           const busLat = parseFloat(data.lat);
           const busLon = parseFloat(data.lon);
+
+          // Calculate distance traveled
+          const currentLocation: LocationData = {
+            lat: busLat,
+            lon: busLon,
+            timestamp: new Date().toISOString()
+          };
+
+          if (previousLocations[route.busId]) {
+            const prevLocation = previousLocations[route.busId];
+            const distance = getDistanceFromLatLonInMeters(
+              prevLocation.lat,
+              prevLocation.lon,
+              busLat,
+              busLon
+            );
+
+            // Only add distance if bus moved more than 10 meters (to avoid GPS noise)
+            if (distance > 10) {
+              setDistanceData(prev => ({
+                ...prev,
+                [route.routeId]: {
+                  routeId: route.routeId,
+                  busId: route.busId,
+                  dailyDistance: (prev[route.routeId]?.dailyDistance || 0) + (distance / 1000), // Convert to km
+                  lastUpdated: new Date().toISOString()
+                }
+              }));
+            }
+          }
+
+          // Update previous location
+          setPreviousLocations(prev => ({
+            ...prev,
+            [route.busId]: currentLocation
+          }));
 
           route.stopsCoordinates.forEach((stop) => {
             const distance = getDistanceFromLatLonInMeters(busLat, busLon, stop.lat, stop.lng);
@@ -264,8 +315,24 @@ function ArrivalDashboard() {
   // Refresh data
   const onRefresh = async () => {
     setRefreshing(true);
-    // Reset arrival times to get fresh data
+    // Reset arrival times and distance data to get fresh data
     setStopArrivalTimes({});
+    // Reset daily distance (new day)
+    const today = new Date().toDateString();
+    const resetDistanceData: { [routeId: string]: DistanceData } = {};
+    Object.keys(distanceData).forEach(routeId => {
+      const lastUpdated = new Date(distanceData[routeId].lastUpdated).toDateString();
+      if (lastUpdated !== today) {
+        resetDistanceData[routeId] = {
+          ...distanceData[routeId],
+          dailyDistance: 0,
+          lastUpdated: new Date().toISOString()
+        };
+      } else {
+        resetDistanceData[routeId] = distanceData[routeId];
+      }
+    });
+    setDistanceData(resetDistanceData);
     setRefreshing(false);
   };
 
@@ -273,6 +340,9 @@ function ArrivalDashboard() {
   const filteredData = selectedRoute === 'all' 
     ? arrivalData 
     : arrivalData.filter(item => item.routeId === selectedRoute);
+
+  // Calculate total daily distance
+  const totalDailyDistance = Object.values(distanceData).reduce((sum, data) => sum + data.dailyDistance, 0);
 
   // Group data by route
   const groupedData = filteredData.reduce((acc, item) => {
@@ -373,6 +443,42 @@ function ArrivalDashboard() {
             {arrivalData.filter(item => item.actualTime !== null).length}
           </Text>
           <Text style={styles.statLabel}>Arrived</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={[styles.statNumber, { color: '#8B5CF6' }]}>
+            {totalDailyDistance.toFixed(1)}
+          </Text>
+          <Text style={styles.statLabel}>Total KM</Text>
+        </View>
+      </View>
+
+      {/* Distance Summary */}
+      <View style={styles.distanceSection}>
+        <View style={styles.sectionHeader}>
+          <Route size={20} color="#8B5CF6" />
+          <Text style={styles.sectionTitle}>Daily Distance Traveled</Text>
+        </View>
+        <View style={styles.distanceContainer}>
+          {Object.values(distanceData).map((data) => {
+            const route = allRoutes.find(r => r.routeId === data.routeId);
+            if (!route) return null;
+            
+            return (
+              <View key={data.routeId} style={styles.distanceCard}>
+                <View style={styles.distanceHeader}>
+                  <Bus size={16} color="#8B5CF6" />
+                  <Text style={styles.distanceRouteName}>{route.routeName}</Text>
+                  <Text style={styles.distanceBusId}>({data.busId})</Text>
+                </View>
+                <Text style={styles.distanceValue}>
+                  {data.dailyDistance.toFixed(2)} km
+                </Text>
+                <Text style={styles.distanceTime}>
+                  Last updated: {new Date(data.lastUpdated).toLocaleTimeString()}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       </View>
 
@@ -524,7 +630,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 16,
     borderRadius: 12,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -533,15 +639,76 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   statNumber: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#10B981',
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#6B7280',
     fontWeight: '500',
+    textAlign: 'center',
+  },
+  distanceSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    color: '#1F2937',
+  },
+  distanceContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  distanceCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    width: '48%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  distanceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  distanceRouteName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginLeft: 6,
+  },
+  distanceBusId: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 4,
+    fontStyle: 'italic',
+  },
+  distanceValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#8B5CF6',
+    marginBottom: 4,
+  },
+  distanceTime: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
   },
   dataContainer: {
     flex: 1,
