@@ -6,7 +6,6 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider } from './(auth)/context/AuthProvider';
 import { ThemeProvider, useTheme } from './(auth)/context/ThemeContext';
 import { publishableKey } from './config/clerk';
-import '../global.css'; // Import NativeWind styles
 
 function AppContent() {
   const { isDark } = useTheme();
