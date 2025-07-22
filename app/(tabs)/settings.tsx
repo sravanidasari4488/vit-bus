@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView } from 'react-native';
-import { Bell, Globe, Moon, Shield, Smartphone } from 'lucide-react-native';
+import { Bell, Globe, Shield, Smartphone, Palette } from 'lucide-react-native';
 import { useTheme } from '../(auth)/context/ThemeContext';
 import { colors } from '../constants/colors';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 function SettingsScreen() {
   const [notifications, setNotifications] = React.useState(true);
@@ -106,22 +107,8 @@ function SettingsScreen() {
           />
         </View>
 
-        <View style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: isDark ? '#374151' : '#FEF3C7' }]}>
-              <Moon size={24} color={isDark ? '#F59E0B' : '#F59E0B'} />
-            </View>
-            <View>
-              <Text style={styles.settingTitle}>Dark Mode</Text>
-              <Text style={styles.settingDescription}>Switch to dark theme</Text>
-            </View>
-          </View>
-          <Switch
-            value={isDark}
-            onValueChange={toggleTheme}
-            trackColor={{ false: theme.switchTrack, true: theme.switchTrackActive }}
-            thumbColor={isDark ? theme.primary : theme.switchThumb}
-          />
+        <View style={[styles.settingItem, { padding: 0, backgroundColor: 'transparent' }]}>
+          <ThemeToggle />
         </View>
 
         <View style={styles.settingItem}>

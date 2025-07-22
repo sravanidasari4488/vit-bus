@@ -1,5 +1,6 @@
 // metro.config.js
 const { getDefaultConfig } = require("expo/metro-config");
+const { withNativeWind } = require('nativewind/metro');
 
 const config = getDefaultConfig(__dirname);
 
@@ -19,4 +20,4 @@ config.resolver.unstable_enablePackageExports = false;
 // -----------------------------------------------------------------------------
 // That’s it – export the tweaked config.
 // -----------------------------------------------------------------------------
-module.exports = config;
+module.exports = withNativeWind(config, { input: './global.css' });
