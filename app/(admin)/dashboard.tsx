@@ -24,12 +24,29 @@ export default function AdminDashboard() {
   const [selectedRequest, setSelectedRequest] = useState<AdminRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [isUserAdmin, setIsUserAdmin] = useState(false);
 
   useEffect(() => {
-    if (user?.isAdmin) {
+    checkAdminStatus();
+  }, [user]);
+
+  useEffect(() => {
+    if (isUserAdmin) {
       loadPendingRequests();
     }
-  }, [user]);
+  }, [isUserAdmin]);
+
+  const checkAdminStatus = async () => {
+    if (user?.id) {
+      try {
+        const adminStatus = await userApi.checkAdminStatus(user.id);
+        setIsUserAdmin(adminStatus);
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+        setIsUserAdmin(false);
+      }
+    }
+  };
 
   const loadPendingRequests = async () => {
     try {
@@ -113,7 +130,7 @@ export default function AdminDashboard() {
           </Text>
           <Text style={styles.userEmail}>{item.userEmail}</Text>
           <Text style={styles.registrationDate}>
-            Applied: {new Date(item.registrationDate).toLocaleDateString()}
+            Applied: {item.registrationDate ? new Date(item.registrationDate).toLocaleDateString() : 'Unknown'}
           </Text>
         </View>
         <View style={styles.statusBadge}>
@@ -151,7 +168,7 @@ export default function AdminDashboard() {
     </View>
   );
 
-  if (!user?.isAdmin) {
+  if (!isUserAdmin) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.accessDenied}>
@@ -160,6 +177,12 @@ export default function AdminDashboard() {
           <Text style={styles.accessDeniedMessage}>
             You don't have admin privileges to access this page.
           </Text>
+          <TouchableOpacity 
+            style={styles.refreshAdminButton}
+            onPress={checkAdminStatus}
+          >
+            <Text style={styles.refreshAdminButtonText}>Check Admin Status</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -386,6 +409,18 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 20,
+  },
+  refreshAdminButton: {
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  refreshAdminButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalContainer: {
     flex: 1,
