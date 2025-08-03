@@ -12,6 +12,7 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { db } from '../app/config/firebase';
+import { Alert, Linking } from 'react-native';
 
 // Collections
 const USERS_COLLECTION = 'approvalUsers';
@@ -146,8 +147,8 @@ export const userApi = {
 
       const userData = querySnapshot.docs[0].data();
 
-      // Send approval email (you can integrate with email service)
-      await sendApprovalEmail(userData.email, userData.displayName, true);
+      // Show approval message instead of sending email automatically
+      showApprovalNotification(userData.email, userData.displayName, true);
 
       return {
         message: 'User approved successfully',
@@ -182,8 +183,8 @@ export const userApi = {
 
       const userData = querySnapshot.docs[0].data();
 
-      // Send rejection email
-      await sendApprovalEmail(userData.email, userData.displayName, false, reason);
+      // Show rejection message instead of sending email automatically
+      showApprovalNotification(userData.email, userData.displayName, false, reason);
 
       return {
         message: 'User rejected successfully',
@@ -211,7 +212,7 @@ export const userApi = {
 
       await addDoc(collection(db, NOTIFICATIONS_COLLECTION), notificationDoc);
 
-      // Get admin users to send email notifications
+      // Get admin users for notification
       const adminsQuery = query(
         collection(db, USERS_COLLECTION),
         where('isAdmin', '==', true)
@@ -221,11 +222,11 @@ export const userApi = {
       const adminEmails = adminsSnapshot.docs.map(doc => doc.data().email);
 
       if (adminEmails.length > 0) {
-        await sendAdminNotificationEmail(adminEmails, userData.userEmail, userData.userDisplayName);
+        showAdminNotification(adminEmails, userData.userEmail, userData.userDisplayName);
       }
 
       return {
-        message: 'Admin notification sent successfully'
+        message: 'Admin notification created successfully'
       };
     } catch (error) {
       console.error('Error notifying admin:', error);
@@ -283,37 +284,50 @@ export const userApi = {
   }
 };
 
-// Email functions (you can integrate with your preferred email service)
-async function sendApprovalEmail(userEmail: string, displayName: string | null, isApproved: boolean, rejectionReason?: string) {
-  // Since we're using client-side Firebase, we'll use a cloud function or external email service
-  // For now, we'll just log the email content
-  
-  const emailContent = {
-    to: userEmail,
-    subject: isApproved ? 'Account Approved - Welcome!' : 'Account Application Update',
-    body: isApproved 
-      ? `Hi ${displayName || 'there'}, Your account has been approved! You can now access the VITAP app.`
-      : `Hi ${displayName || 'there'}, Your account application has been rejected. ${rejectionReason ? `Reason: ${rejectionReason}` : ''} Contact support@vitap.ac.in for assistance.`
-  };
+// Helper functions for notifications
+function showApprovalNotification(userEmail: string, displayName: string | null, isApproved: boolean, rejectionReason?: string) {
+  const title = isApproved ? 'User Approved' : 'User Rejected';
+  const message = isApproved 
+    ? `${displayName || userEmail} has been approved. You can optionally contact them at ${userEmail}.`
+    : `${displayName || userEmail} has been rejected. ${rejectionReason ? `Reason: ${rejectionReason}. ` : ''}You can contact them at ${userEmail}.`;
 
-  console.log('Email to send:', emailContent);
-  
-  // TODO: Integrate with email service like:
-  // - Firebase Cloud Functions with SendGrid
-  // - Expo's email service
-  // - Third-party email API
+  Alert.alert(
+    title,
+    message,
+    [
+      { text: 'OK', style: 'default' },
+      {
+        text: 'Send Email',
+        style: 'default',
+        onPress: () => openEmailApp(userEmail, isApproved, displayName, rejectionReason)
+      }
+    ]
+  );
 }
 
-async function sendAdminNotificationEmail(adminEmails: string[], userEmail: string, displayName: string | null) {
-  const emailContent = {
-    to: adminEmails,
-    subject: 'New User Registration - Approval Required',
-    body: `New user registration: ${displayName || 'Unknown'} (${userEmail}) requires approval.`
-  };
-
-  console.log('Admin notification email:', emailContent);
+function showAdminNotification(adminEmails: string[], userEmail: string, displayName: string | null) {
+  console.log(`New registration notification for admins: ${adminEmails.join(', ')}`);
+  console.log(`User: ${displayName || 'Unknown'} (${userEmail})`);
   
-  // TODO: Integrate with email service
+  // In a real app, you could:
+  // 1. Use push notifications
+  // 2. Use Firebase Cloud Messaging
+  // 3. Display in-app notifications
+  // 4. Send emails via Firebase Functions
+}
+
+function openEmailApp(userEmail: string, isApproved: boolean, displayName: string | null, rejectionReason?: string) {
+  const subject = isApproved ? 'Account Approved - Welcome to VITAP App!' : 'Account Application Update';
+  const body = isApproved 
+    ? `Hi ${displayName || 'there'},\n\nGreat news! Your account has been approved and you can now access the VITAP app.\n\nYou can now log in using your registered email address.\n\nBest regards,\nVITAP Team`
+    : `Hi ${displayName || 'there'},\n\nWe regret to inform you that your account application has been rejected.\n\n${rejectionReason ? `Reason: ${rejectionReason}\n\n` : ''}If you have any questions, please contact support at support@vitap.ac.in\n\nBest regards,\nVITAP Team`;
+
+  const emailUrl = `mailto:${userEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  
+  Linking.openURL(emailUrl).catch(err => {
+    console.error('Error opening email app:', err);
+    Alert.alert('Error', 'Could not open email app. Please send the notification manually.');
+  });
 }
 
 export default userApi;
