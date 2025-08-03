@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useUser, useAuth as useClerkAuth } from '@clerk/clerk-expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userApi } from '../../../src/services/api';
 
 interface User {
   id: string;
@@ -8,6 +9,14 @@ interface User {
   displayName: string | null;
   photoURL: string | null;
   emailVerified: boolean;
+  // Admin approval fields
+  approvalStatus: 'pending' | 'approved' | 'rejected';
+  isAdmin: boolean;
+  approvedBy?: string;
+  approvedAt?: Date;
+  rejectedAt?: Date;
+  rejectionReason?: string;
+  registrationDate: Date;
 }
 
 interface AuthError {
@@ -29,6 +38,11 @@ interface AuthContextType {
   setSelectedRouteId: (routeId: string) => Promise<void>;
   userInfo: any;
   setUserInfo: React.Dispatch<React.SetStateAction<any>>;
+  // New admin approval methods
+  checkApprovalStatus: () => Promise<void>;
+  isUserApproved: () => boolean;
+  isPending: () => boolean;
+  isRejected: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,15 +59,22 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (isLoaded) {
       if (clerkUser) {
+        // Create basic user data from Clerk
         const userData: User = {
           id: clerkUser.id,
           email: clerkUser.emailAddresses[0]?.emailAddress || '',
           displayName: clerkUser.fullName || clerkUser.firstName || null,
           photoURL: clerkUser.imageUrl || null,
           emailVerified: clerkUser.emailAddresses[0]?.verification?.status === 'verified',
+          // Default approval fields - will be updated from backend
+          approvalStatus: 'pending',
+          isAdmin: false,
+          registrationDate: new Date(),
         };
         setUser(userData);
         loadUserRoute();
+        // Check approval status from backend
+        checkApprovalStatus();
       } else {
         setUser(null);
         setSelectedRouteIdState(null);
@@ -84,6 +105,41 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const validateEmail = (email: string): boolean => {
     const validDomains = ['@vitapstudent.ac.in', '@vitap.ac.in'];
     return validDomains.some(domain => email.endsWith(domain));
+  };
+
+  const checkApprovalStatus = async () => {
+    if (!clerkUser) return;
+    
+    try {
+      const approvalData = await userApi.getUserApprovalStatus(clerkUser.id);
+      
+      setUser(prev => prev ? {
+        ...prev,
+        approvalStatus: approvalData.approvalStatus,
+        isAdmin: approvalData.isAdmin || false,
+        approvedBy: approvalData.approvedBy,
+        approvedAt: approvalData.approvedAt ? new Date(approvalData.approvedAt) : undefined,
+        rejectedAt: approvalData.rejectedAt ? new Date(approvalData.rejectedAt) : undefined,
+        rejectionReason: approvalData.rejectionReason,
+        registrationDate: approvalData.registrationDate ? new Date(approvalData.registrationDate) : new Date(),
+      } : null);
+    } catch (error) {
+      console.error('Error checking approval status:', error);
+      // If user doesn't exist in backend, they're pending approval
+      setUser(prev => prev ? { ...prev, approvalStatus: 'pending' } : null);
+    }
+  };
+
+  const isUserApproved = (): boolean => {
+    return user?.approvalStatus === 'approved';
+  };
+
+  const isPending = (): boolean => {
+    return user?.approvalStatus === 'pending';
+  };
+
+  const isRejected = (): boolean => {
+    return user?.approvalStatus === 'rejected';
   };
 
   const signIn = async (email: string, password: string) => {
@@ -134,6 +190,24 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (result) {
         // Send verification email
         await result.prepareEmailAddressVerification({ strategy: 'email_link' });
+        
+        // Submit user for admin approval
+        try {
+          await userApi.submitForApproval({
+            userId: result.id,
+            email: email,
+            displayName: displayName,
+          });
+
+          // Notify admin about new registration
+          await userApi.notifyAdmin({
+            userEmail: email,
+            userDisplayName: displayName,
+          });
+        } catch (approvalError) {
+          console.error('Error submitting for approval:', approvalError);
+          // Don't throw error here, let user complete registration
+        }
       }
     } catch (error: any) {
       setError(parseAuthError(error));
@@ -244,6 +318,11 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUserInfo,
     selectedRouteId,
     setSelectedRouteId: saveSelectedRouteId,
+    // New admin approval methods
+    checkApprovalStatus,
+    isUserApproved,
+    isPending,
+    isRejected,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

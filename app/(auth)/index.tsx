@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { useAuth } from './context/AuthProvider';
 
-function Index() {
-  const [isLoading, setIsLoading] = useState(true);
+export default function AuthIndex() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const { user, isUserApproved, isPending, isRejected } = useAuth();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -17,28 +18,24 @@ function Index() {
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && user) {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, user, isLoading]);
+
   if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#3366FF" />
-      </View>
-    );
+    return null; // or a loading spinner
   }
 
-  if (isAuthenticated) {
-    return <Redirect href="/(tabs)" />;
+  if (isAuthenticated && user) {
+    // Check approval status
+    if (isUserApproved()) {
+      return <Redirect href="/(tabs)" />;
+    } else if (isPending() || isRejected()) {
+      return <Redirect href="/pending-approval" />;
+    }
   }
 
   return <Redirect href="/login" />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-});
-
-export default Index;

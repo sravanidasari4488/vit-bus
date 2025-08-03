@@ -1,50 +1,71 @@
 // src/services/api.ts
 import axios from 'axios';
-import { auth } from '../config/firebase';// Your Firebase auth instance
-import { getAuth, getIdToken } from 'firebase/auth';
-//const API_BASE_URL = 'https://git-backend-1-production.up.railway.app/get_location'; // Or your backend URL
-import Constants from 'expo-constants';
-const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'https://git-backend-1-production.up.railway.app/get_location';
-// Create axios instance
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 10000,
 });
 
-// Add request interceptor to include Firebase token
-api.interceptors.request.use(async (config) => {
-  const user = auth.currentUser;
-  if (user) {
-    try {
-      const token = await getIdToken(user);
-      config.headers.Authorization = `Bearer ${token}`;
-    } catch (error) {
-      console.warn('Failed to get ID token:', error);
-    }
+// Add auth token to requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
-}, (error) => {
-  return Promise.reject(error);
 });
 
-// API methods
-export const saveUserRoute = async (route: string) => {
-  try {
-    const response = await api.post('/api/user/route', { route });
+// User Management APIs
+export const userApi = {
+  // Get all pending approval requests
+  getPendingApprovals: async () => {
+    const response = await api.get('/admin/pending-approvals');
     return response.data;
-  } catch (error) {
-    console.error('Error saving route:', error);
-    throw error;
-  }
+  },
+
+  // Approve a user
+  approveUser: async (userId: string, adminId: string) => {
+    const response = await api.post(`/admin/approve-user/${userId}`, {
+      approvedBy: adminId,
+    });
+    return response.data;
+  },
+
+  // Reject a user
+  rejectUser: async (userId: string, adminId: string, reason?: string) => {
+    const response = await api.post(`/admin/reject-user/${userId}`, {
+      rejectedBy: adminId,
+      rejectionReason: reason,
+    });
+    return response.data;
+  },
+
+  // Get user approval status
+  getUserApprovalStatus: async (userId: string) => {
+    const response = await api.get(`/user/approval-status/${userId}`);
+    return response.data;
+  },
+
+  // Submit user for approval (called after registration)
+  submitForApproval: async (userData: {
+    userId: string;
+    email: string;
+    displayName: string | null;
+  }) => {
+    const response = await api.post('/user/submit-for-approval', userData);
+    return response.data;
+  },
+
+  // Send notification to admin
+  notifyAdmin: async (userData: {
+    userEmail: string;
+    userDisplayName: string | null;
+  }) => {
+    const response = await api.post('/admin/notify-new-registration', userData);
+    return response.data;
+  },
 };
 
-export const getUserRoute = async () => {
-  try {
-    const response = await api.get('/api/user/route');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching route:', error);
-    throw error;
-  }
-};
-
-// Add other API methods as needed
+export default api;
