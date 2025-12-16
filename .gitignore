@@ -17,6 +17,7 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+.env*.local
 
 # Logs
 npm-debug.log*
@@ -33,15 +34,28 @@ lerna-debug.log*
 
 # OS
 Thumbs.db
+*.pem
 
 # Expo
 .expo/
 .expo-shared/
 web-build/
+expo-env.d.ts
 
 # Firebase
 .firebase/
 firebase-debug.log
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
 
 # Backend specific
 Backend/node_modules/
@@ -52,8 +66,10 @@ Frontend/node_modules/
 Frontend/.expo/
 Frontend/web-build/
 
+# TypeScript
+*.tsbuildinfo
+
 # Temporary files
 *.tmp
 *.temp
 *.log
-
